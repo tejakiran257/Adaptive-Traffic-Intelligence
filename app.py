@@ -31,20 +31,20 @@ def generate_llm_response(text):
         data = {
             "model": "llama3-70b-8192",
             "messages": [
-                {"role": "user", "content": f"Explain this traffic detection clearly: {text}"}
+                {"role": "system", "content": "You are a traffic analysis assistant."},
+                {"role": "user", "content": f"Explain this traffic detection: {text}"}
             ]
         }
 
-        response = requests.post(url, headers=headers, json=data)
+        response = requests.post(url, headers=headers, json=data, timeout=10)
 
         if response.status_code == 200:
             return response.json()["choices"][0]["message"]["content"]
         else:
-            return f"LLM Error: {response.status_code}"
+            return "⚠️ AI unavailable"
 
-    except Exception as e:
-        return f"Connection Error: {e}"
-
+    except:
+        return f"📊 Detected objects: {text}. Follow traffic rules."
 # -------------------------------
 # TEXT TO SPEECH
 # -------------------------------
