@@ -11,42 +11,47 @@ import os
 # -------------------------------
 # CONFIG
 # -------------------------------
-MODEL_PATH = "yolov8n.pt"   # Replace with traffic_sign_model.pt later
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+MODEL_PATH = "yolov8n.pt"
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")  # 🔐 Secure
 
 model = YOLO(MODEL_PATH)
 
 # -------------------------------
-# LLM RESPONSE (GROQ)
+# LLM FUNCTION (FIXED + SAFE)
 # -------------------------------
 def generate_llm_response(text):
+    if not GROQ_API_KEY:
+        return "⚠️ API Key not set."
+
+    url = "https://api.groq.com/openai/v1/chat/completions"
+
+    headers = {
+        "Authorization": f"Bearer {GROQ_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    data = {
+        "model": "llama3-70b-8192",
+        "messages": [
+            {"role": "system", "content": "You are a traffic analysis assistant."},
+            {"role": "user", "content": f"Explain this traffic detection: {text}"}
+        ]
+    }
+
     try:
-        url = "https://api.groq.com/openai/v1/chat/completions"
-
-        headers = {
-            "Authorization": f"Bearer {GROQ_API_KEY}",
-            "Content-Type": "application/json"
-        }
-
-        data = {
-            "model": "llama3-70b-8192",
-            "messages": [
-                {"role": "system", "content": "You are a traffic analysis assistant."},
-                {"role": "user", "content": f"Explain this traffic detection: {text}"}
-            ]
-        }
-
         response = requests.post(url, headers=headers, json=data, timeout=10)
 
         if response.status_code == 200:
             return response.json()["choices"][0]["message"]["content"]
         else:
-            return "⚠️ AI unavailable"
+            return "⚠️ AI unavailable (API error)"
 
     except:
-        return f"📊 Detected objects: {text}. Follow traffic rules."
+        # ✅ Offline fallback
+        return f"📊 Detected: {text}. Follow traffic safety rules."
+
 # -------------------------------
-# TEXT TO SPEECH
+# TEXT TO SPEECH (SAFE)
 # -------------------------------
 def text_to_speech(text):
     try:
@@ -70,25 +75,21 @@ def detect_image(image):
 
     for r in results:
         for box in r.boxes:
-            cls_id = int(box.cls[0])
+            label = model.names[int(box.cls[0])]
             conf = float(box.conf[0])
-            label = model.names[cls_id]
 
             x1, y1, x2, y2 = map(int, box.xyxy[0])
 
-            # Store structured data
             detections.append({
                 "type": label,
                 "confidence": round(conf, 2),
                 "location": (x1, y1, x2, y2)
             })
 
-            # Draw bounding box
-            cv2.rectangle(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
+            cv2.rectangle(image, (x1,y1),(x2,y2),(0,255,0),2)
             cv2.putText(image, f"{label} {conf:.2f}",
-                        (x1, y1 - 10),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.5, (0, 255, 0), 2)
+                        (x1,y1-10),
+                        cv2.FONT_HERSHEY_SIMPLEX,0.5,(0,255,0),2)
 
     return image, detections
 
@@ -101,8 +102,7 @@ def detect_video(video_file):
 
     cap = cv2.VideoCapture(tfile.name)
     stframe = st.empty()
-
-    all_detections = []
+    detections = []
 
     while cap.isOpened():
         ret, frame = cap.read()
@@ -113,37 +113,31 @@ def detect_video(video_file):
 
         for r in results:
             for box in r.boxes:
-                cls_id = int(box.cls[0])
+                label = model.names[int(box.cls[0])]
                 conf = float(box.conf[0])
-                label = model.names[cls_id]
 
                 x1, y1, x2, y2 = map(int, box.xyxy[0])
 
-                detection = {
+                detections.append({
                     "type": label,
                     "confidence": round(conf, 2),
                     "location": (x1, y1, x2, y2)
-                }
+                })
 
-                all_detections.append(detection)
-
-                # Draw
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0,255,0), 2)
-                cv2.putText(frame, f"{label} {conf:.2f}",
-                            (x1, y1 - 10),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.5, (0,255,0), 2)
+                cv2.rectangle(frame,(x1,y1),(x2,y2),(0,255,0),2)
+                cv2.putText(frame,f"{label} {conf:.2f}",
+                            (x1,y1-10),
+                            cv2.FONT_HERSHEY_SIMPLEX,0.5,(0,255,0),2)
 
         stframe.image(frame, channels="BGR")
 
     cap.release()
 
-    # Remove duplicates
-    unique = {str(d): d for d in all_detections}
+    unique = {str(d): d for d in detections}
     return list(unique.values())
 
 # -------------------------------
-# STREAMLIT UI
+# UI
 # -------------------------------
 st.set_page_config(page_title="Traffic Intelligence", layout="wide")
 
@@ -152,87 +146,69 @@ st.title("🚦 Adaptive Traffic Intelligence System")
 option = st.radio("Choose Input Type", ["Image", "Video"])
 
 # -------------------------------
-# IMAGE SECTION
+# IMAGE
 # -------------------------------
 if option == "Image":
-    uploaded_file = st.file_uploader("Upload Image", type=["jpg", "png", "jpeg"])
+    file = st.file_uploader("Upload Image", type=["jpg","png","jpeg"])
 
-    if uploaded_file is not None:
-        image = Image.open(uploaded_file).convert("RGB")
+    if file:
+        image = Image.open(file).convert("RGB")
         image = np.array(image)
 
-        st.image(image, caption="Uploaded Image")
+        st.image(image)
 
         if st.button("Detect Image"):
-            result_img, detections = detect_image(image.copy())
+            img, det = detect_image(image.copy())
+            st.image(img)
 
-            st.image(result_img, caption="Detected Image")
+            if det:
+                st.subheader("📊 Results")
 
-            if detections:
-                st.subheader("📊 Detection Results")
+                summary = []
+                for d in det:
+                    st.write(d)
+                    summary.append(f"{d['type']} ({d['confidence']})")
 
-                summary_text = []
+                text = ", ".join(summary)
 
-                for d in detections:
-                    st.write(f"🔹 Type: {d['type']}")
-                    st.write(f"🔹 Confidence: {d['confidence']}")
-                    st.write(f"🔹 Location: {d['location']}")
-                    st.write("---")
-
-                    summary_text.append(f"{d['type']} ({d['confidence']})")
-
-                result_text = ", ".join(summary_text)
-
-                # LLM
                 st.subheader("🧠 AI Explanation")
-                explanation = generate_llm_response(result_text)
-                st.write(explanation)
+                st.write(generate_llm_response(text))
 
-                # AUDIO
-                st.subheader("🔊 Audio Output")
-                audio_file = text_to_speech(result_text)
-                if audio_file:
-                    st.audio(audio_file)
+                st.subheader("🔊 Audio")
+                audio = text_to_speech(text)
+                if audio:
+                    st.audio(audio)
                 else:
-                    st.warning("Audio generation failed")
-
-            else:
-                st.warning("No objects detected")
+                    st.warning("Audio unavailable")
 
 # -------------------------------
-# VIDEO SECTION
+# VIDEO
 # -------------------------------
 elif option == "Video":
-    uploaded_video = st.file_uploader("Upload Video", type=["mp4", "avi"])
+    file = st.file_uploader("Upload Video", type=["mp4","avi"])
 
-    if uploaded_video is not None:
-        st.video(uploaded_video)
+    if file:
+        st.video(file)
 
         if st.button("Detect Video"):
-            detections = detect_video(uploaded_video)
+            det = detect_video(file)
 
-            if detections:
-                st.subheader("📊 Detection Results")
+            if det:
+                st.subheader("📊 Results")
 
-                summary_text = []
+                summary = []
+                for d in det:
+                    st.write(d)
+                    summary.append(f"{d['type']} ({d['confidence']})")
 
-                for d in detections:
-                    st.write(f"🔹 Type: {d['type']}")
-                    st.write(f"🔹 Confidence: {d['confidence']}")
-                    st.write(f"🔹 Location: {d['location']}")
-                    st.write("---")
-
-                    summary_text.append(f"{d['type']} ({d['confidence']})")
-
-                result_text = ", ".join(summary_text)
+                text = ", ".join(summary)
 
                 st.subheader("🧠 AI Explanation")
-                st.write(generate_llm_response(result_text))
+                st.write(generate_llm_response(text))
 
-                st.subheader("🔊 Audio Output")
-                audio_file = text_to_speech(result_text)
-                if audio_file:
-                    st.audio(audio_file)
-
-            else:
-                st.warning("No objects detected")
+                st.subheader("🔊 Audio")
+                audio = text_to_speech(text)
+                if audio:
+                    st.audio(audio)
+                else:
+                    st.warning("Audio unavailable")
