@@ -12,7 +12,7 @@ import os
 # CONFIG
 # -------------------------------
 MODEL_PATH = "yolov8n.pt"   # Replace with traffic_sign_model.pt later
-GROQ_API_KEY = "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"
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 model = YOLO(MODEL_PATH)
 
