@@ -29,7 +29,7 @@ def generate_llm_response(text):
         }
 
         data = {
-            "model": "gemma2-9b-it",
+            "model": "llama3-70b-8192",
             "messages": [
                 {"role": "user", "content": f"Explain this traffic detection clearly: {text}"}
             ]
