@@ -14,7 +14,7 @@ import os
 MODEL_PATH = "yolov8n.pt"
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")  # 🔐 Secure
 
-model = YOLO(MODEL_PATH)
+model = YOLO("yolov8n.pt")
 
 # -------------------------------
 # LLM FUNCTION (FIXED + SAFE)
